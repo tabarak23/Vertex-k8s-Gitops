@@ -1,0 +1,41 @@
+{{- if .Values.localDb.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: user-db-init
+  namespace: {{ .Values.namespace }}
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mysql-init
+          image: mysql:8
+          command:
+            - sh
+            - -c
+            - |
+              until mysqladmin ping -h user-mysql --silent; do
+                sleep 2
+              done
+
+              echo "Creating database and user..."
+              mysql -h user-mysql -uroot -prootpassword <<EOF
+              CREATE DATABASE IF NOT EXISTS userdb;
+              CREATE USER IF NOT EXISTS 'user'@'%' IDENTIFIED BY 'password';
+              GRANT ALL PRIVILEGES ON userdb.* TO 'user'@'%';
+              FLUSH PRIVILEGES;
+              EOF
+
+              echo "Applying schema..."
+              mysql -h user-mysql -uuser -ppassword userdb < /schema/schema.sql
+
+          volumeMounts:
+            - name: schema-volume
+              mountPath: /schema
+      volumes:
+        - name: schema-volume
+          configMap:
+            name: user-schema
+{{- end }}
